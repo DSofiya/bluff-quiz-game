@@ -98,7 +98,7 @@ Railway flow:
 2. Create a Railway project from the GitHub repository.
 3. Add Railway PostgreSQL.
 4. Add `DATABASE_URL`, `AUTH_SECRET`, `NEXTAUTH_URL`.
-5. Run `npm run prisma:deploy` once, or configure it as a release command.
+5. In the app service, set the Railway pre-deploy command to `npx prisma migrate deploy`.
 6. Deploy the Next.js service.
 
 Local development still falls back to in-memory state when `DATABASE_URL` is not set, so the app can be tested without a database. On the server, set `DATABASE_URL` so all users share the same PostgreSQL-backed game state.
