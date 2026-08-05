@@ -1,0 +1,224 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  HOST
+  PLAYER
+  SPECTATOR
+}
+
+enum GamePhase {
+  LOBBY
+  ANSWER_PHASE
+  ANSWER_PHASE_COMPLETE
+  VOTING_PHASE
+  ROUND_RESULTS
+  FINAL_RESULTS
+  FINISHED
+}
+
+enum CaptainPhase {
+  ANSWER
+  VOTE
+}
+
+enum SelectedAnswerType {
+  CORRECT
+  TEAM_FAKE
+  ADMIN_WRONG
+}
+
+model User {
+  id           String       @id @default(cuid())
+  name         String
+  email        String?      @unique
+  passwordHash String?
+  role         UserRole
+  hostedGames  Game[]       @relation("HostedGames")
+  memberships  TeamMember[]
+  answers      TeamAnswer[]
+  votes        Vote[]
+  captaincies  PhaseCaptain[]
+}
+
+model GameTemplate {
+  id              String             @id @default(cuid())
+  title           String
+  adminId         String
+  teamCount       Int
+  playerCount     Int
+  answerTimeLimit Int
+  voteTimeLimit   Int
+  createdAt       DateTime           @default(now())
+  questions       TemplateQuestion[]
+  games           Game[]
+}
+
+model GameState {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TemplateQuestion {
+  id            String       @id @default(cuid())
+  templateId    String
+  template      GameTemplate @relation(fields: [templateId], references: [id])
+  text          String
+  correctAnswer String
+  wrongAnswer   String
+  order         Int
+
+  @@unique([templateId, order])
+}
+
+model Game {
+  id                   String         @id @default(cuid())
+  code                 String         @unique
+  title                String
+  templateId           String?
+  template             GameTemplate?  @relation(fields: [templateId], references: [id])
+  adminId              String
+  admin                User           @relation("HostedGames", fields: [adminId], references: [id])
+  hostId               String?
+  status               GamePhase      @default(LOBBY)
+  teamCount            Int
+  playerCount          Int
+  questionCount        Int
+  answerTimeLimit      Int
+  voteTimeLimit        Int
+  currentQuestionIndex Int            @default(0)
+  allowOwnAnswerVote   Boolean        @default(false)
+  showCorrectAnswer    Boolean        @default(true)
+  phaseStartedAt       DateTime?
+  phaseEndsAt          DateTime?
+  timerPausedAt        DateTime?
+  totalPausedSeconds   Int            @default(0)
+  createdAt            DateTime       @default(now())
+  teams                Team[]
+  questions            GameQuestion[]
+  captains             PhaseCaptain[]
+  answerOptions        AnswerOption[]
+  scoreEvents          ScoreEvent[]
+}
+
+model Team {
+  id          String       @id @default(cuid())
+  gameId      String
+  game        Game         @relation(fields: [gameId], references: [id])
+  name        String
+  color       String
+  score       Int          @default(0)
+  members     TeamMember[]
+  answers     TeamAnswer[]
+  votes       Vote[]
+  captains    PhaseCaptain[]
+  scoreEvents ScoreEvent[]
+}
+
+model TeamMember {
+  id     String @id @default(cuid())
+  teamId String
+  team   Team   @relation(fields: [teamId], references: [id])
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+}
+
+model Question {
+  id            String         @id @default(cuid())
+  text          String
+  correctAnswer String
+  wrongAnswer   String
+  games         GameQuestion[]
+}
+
+model GameQuestion {
+  id         String       @id @default(cuid())
+  gameId     String
+  game       Game         @relation(fields: [gameId], references: [id])
+  questionId String
+  question   Question     @relation(fields: [questionId], references: [id])
+  order      Int
+  answers    TeamAnswer[]
+  votes      Vote[]
+  options    AnswerOption[]
+  scores     ScoreEvent[]
+
+  @@unique([gameId, order])
+}
+
+model TeamAnswer {
+  id             String       @id @default(cuid())
+  gameQuestionId String
+  gameQuestion   GameQuestion @relation(fields: [gameQuestionId], references: [id])
+  teamId         String
+  team           Team         @relation(fields: [teamId], references: [id])
+  captainUserId  String
+  captain        User         @relation(fields: [captainUserId], references: [id])
+  answerText     String
+  submittedAt    DateTime     @default(now())
+
+  @@unique([gameQuestionId, teamId])
+}
+
+model AnswerOption {
+  id             String             @id @default(cuid())
+  gameId         String
+  game           Game               @relation(fields: [gameId], references: [id])
+  gameQuestionId String
+  gameQuestion   GameQuestion       @relation(fields: [gameQuestionId], references: [id])
+  type           SelectedAnswerType
+  text           String
+  teamId         String?
+  order          Int
+
+  @@unique([gameQuestionId, order])
+}
+
+model Vote {
+  id                 String             @id @default(cuid())
+  gameQuestionId     String
+  gameQuestion       GameQuestion       @relation(fields: [gameQuestionId], references: [id])
+  teamId             String
+  team               Team               @relation(fields: [teamId], references: [id])
+  captainUserId      String
+  captain            User               @relation(fields: [captainUserId], references: [id])
+  selectedAnswerId   String
+  selectedAnswerType SelectedAnswerType
+  submittedAt        DateTime           @default(now())
+
+  @@unique([gameQuestionId, teamId])
+}
+
+model PhaseCaptain {
+  id     String       @id @default(cuid())
+  gameId String
+  game   Game         @relation(fields: [gameId], references: [id])
+  teamId String
+  team   Team         @relation(fields: [teamId], references: [id])
+  userId String
+  user   User         @relation(fields: [userId], references: [id])
+  phase  CaptainPhase
+
+  @@unique([gameId, teamId, phase])
+}
+
+model ScoreEvent {
+  id             String       @id @default(cuid())
+  gameId         String
+  game           Game         @relation(fields: [gameId], references: [id])
+  gameQuestionId String
+  gameQuestion   GameQuestion @relation(fields: [gameQuestionId], references: [id])
+  teamId         String
+  team           Team         @relation(fields: [teamId], references: [id])
+  points         Int
+  reason         String
+}
