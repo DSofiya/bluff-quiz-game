@@ -153,11 +153,6 @@ export default function Home() {
     call({ action: "update-questions", code: game.code, questions });
   }
 
-  function updateTeam(teamId: string, name: string) {
-    if (!game) return;
-    call({ action: "update-team", code: game.code, teamId, name });
-  }
-
   function submitAnswer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!game || !player) return;
@@ -180,7 +175,7 @@ export default function Home() {
   }
 
   if (game && player?.role === "ADMIN") {
-    return <AdminDashboard game={game} error={error} onReset={resetLocal} onSaveQuestions={updateQuestions} onSaveTeam={updateTeam} />;
+    return <AdminDashboard game={game} error={error} onReset={resetLocal} />;
   }
 
   if (!game || !player) {
@@ -410,14 +405,10 @@ function AdminDashboard({
   game,
   error,
   onReset,
-  onSaveQuestions,
-  onSaveTeam,
 }: {
   game: Snapshot;
   error: string;
   onReset: () => void;
-  onSaveQuestions: (questions: QuestionInput[]) => void;
-  onSaveTeam: (teamId: string, name: string) => void;
 }) {
   return (
     <main className="min-h-screen bg-[#f7f4ef] text-slate-950">
@@ -433,114 +424,51 @@ function AdminDashboard({
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-6xl gap-5 px-5 py-5 lg:grid-cols-[360px_1fr]">
-        <aside className="space-y-4">
-          <Panel title="Налаштування" icon={<Crown size={18} />}>
-            <div className="grid gap-3 text-sm">
-              <InfoRow label="Команд" value={String(game.teamCount)} />
-              <InfoRow label="Гравців" value={String(game.playerCount)} />
-              <InfoRow label="Питань" value={String(game.questionCount)} />
-              <InfoRow label="Час відповіді" value={`${game.answerTimeLimit} сек`} />
-              <InfoRow label="Час голосування" value={`${game.voteTimeLimit} сек`} />
-              <InfoRow label="Статус" value={phaseLabels[game.phase]} />
-            </div>
-          </Panel>
+      <div className="mx-auto grid max-w-6xl gap-5 px-5 py-5">
+        <Panel title="Дані гри" icon={<Crown size={18} />}>
+          <GameDetailsTable game={game} />
+        </Panel>
 
-          <Panel title="Посилання" icon={<LogIn size={18} />}>
-            <div className="grid gap-3 text-sm">
-              <ShareCard title="Ведучий" path={`/host/${game.code}`} />
-              <ShareCard title="Гравці" path={`/play/${game.code}`} />
-              <ShareCard title="Глядачі" path={`/spectator/${game.code}`} />
-            </div>
-          </Panel>
+        <Panel title="Посилання та QR коди" icon={<LogIn size={18} />}>
+          <div className="grid gap-3 lg:grid-cols-3">
+            <ShareCard title="Ведучий" path={`/host/${game.code}`} />
+            <ShareCard title="Гравці" path={`/play/${game.code}`} />
+            <ShareCard title="Глядачі" path={`/spectator/${game.code}`} />
+          </div>
+        </Panel>
 
-          <Panel title="Команди" icon={<Users size={18} />}>
-            <div className="space-y-2 text-sm">
-              {game.teams.map((team) => (
-                <div key={team.id} className="rounded-md bg-slate-50 p-3">
-                  {game.phase === "LOBBY" ? (
-                    <TeamNameEditor teamId={team.id} name={team.name} color={team.color} onSave={onSaveTeam} />
-                  ) : (
-                    <p className="flex items-center gap-2 font-semibold">
-                      <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: team.color }} />
-                      {team.name}
-                    </p>
-                  )}
-                  <p className="text-slate-600">
-                    {team.members.length} гравців: {team.members.map((member) => member.name).join(", ") || "ще немає"}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </Panel>
-        </aside>
-
-        <section className="space-y-4">
-          {game.phase === "LOBBY" ? (
-            <HostQuestionManager game={game} onSave={onSaveQuestions} />
-          ) : (
-            <Panel title="Питання" icon={<Flag size={18} />}>
-              <div className="space-y-3">
-                {game.questions.map((question, index) => (
-                  <div key={question.id} className="rounded-md bg-slate-50 p-3">
-                    <p className="font-semibold">
-                      {index + 1}. {question.text}
-                    </p>
-                    <p className="text-sm text-slate-600">Правильна відповідь: {question.correctAnswer}</p>
-                    <p className="text-sm text-slate-600">Штрафна відповідь: {question.wrongAnswer}</p>
-                  </div>
-                ))}
-              </div>
-            </Panel>
-          )}
-          {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-        </section>
+        {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       </div>
     </main>
   );
 }
 
-function TeamNameEditor({
-  teamId,
-  name,
-  color,
-  onSave,
-}: {
-  teamId: string;
-  name: string;
-  color: string;
-  onSave: (teamId: string, name: string) => void;
-}) {
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    onSave(teamId, String(form.get("name") ?? ""));
-  }
-
+function GameDetailsTable({ game }: { game: Snapshot }) {
   return (
-    <form onSubmit={submit} className="mb-2 grid gap-2">
-      <label className="label">
-        Назва команди
-        <div className="grid grid-cols-[1fr_44px] gap-2">
-          <div className="relative">
-            <span className="pointer-events-none absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 rounded-sm" style={{ backgroundColor: color }} />
-            <input className="input pl-8" name="name" defaultValue={name} required />
-          </div>
-          <button className="secondary-button min-h-11 px-0" type="submit" title="Зберегти назву команди">
-            <Save size={16} />
-          </button>
-        </div>
-      </label>
-    </form>
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[620px] border-collapse text-sm">
+        <tbody>
+          <TableRow label="Назва гри" value={game.title} />
+          <TableRow label="Код гри" value={game.code} />
+          <TableRow label="Статус" value={phaseLabels[game.phase]} />
+          <TableRow label="Команд" value={String(game.teamCount)} />
+          <TableRow label="Назви команд" value={game.teams.map((team) => team.name).join(", ")} />
+          <TableRow label="Гравців" value={`${game.players.filter((player) => player.role === "PLAYER").length} / ${game.playerCount}`} />
+          <TableRow label="Питань" value={String(game.questionCount)} />
+          <TableRow label="Час відповіді" value={`${game.answerTimeLimit} сек`} />
+          <TableRow label="Час голосування" value={`${game.voteTimeLimit} сек`} />
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function TableRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md bg-slate-50 px-3 py-2">
-      <span className="text-slate-600">{label}</span>
-      <span className="font-bold">{value}</span>
-    </div>
+    <tr className="border-b border-slate-200 last:border-b-0">
+      <th className="w-56 bg-slate-50 px-3 py-3 text-left font-semibold text-slate-600">{label}</th>
+      <td className="px-3 py-3 font-semibold">{value}</td>
+    </tr>
   );
 }
 
