@@ -153,6 +153,11 @@ export default function Home() {
     call({ action: "update-questions", code: game.code, questions });
   }
 
+  function updateTeam(teamId: string, name: string) {
+    if (!game) return;
+    call({ action: "update-team", code: game.code, teamId, name });
+  }
+
   function submitAnswer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!game || !player) return;
@@ -175,7 +180,7 @@ export default function Home() {
   }
 
   if (game && player?.role === "ADMIN") {
-    return <AdminDashboard game={game} error={error} onReset={resetLocal} onSaveQuestions={updateQuestions} />;
+    return <AdminDashboard game={game} error={error} onReset={resetLocal} onSaveQuestions={updateQuestions} onSaveTeam={updateTeam} />;
   }
 
   if (!game || !player) {
@@ -406,11 +411,13 @@ function AdminDashboard({
   error,
   onReset,
   onSaveQuestions,
+  onSaveTeam,
 }: {
   game: Snapshot;
   error: string;
   onReset: () => void;
   onSaveQuestions: (questions: QuestionInput[]) => void;
+  onSaveTeam: (teamId: string, name: string) => void;
 }) {
   return (
     <main className="min-h-screen bg-[#f7f4ef] text-slate-950">
@@ -451,7 +458,14 @@ function AdminDashboard({
             <div className="space-y-2 text-sm">
               {game.teams.map((team) => (
                 <div key={team.id} className="rounded-md bg-slate-50 p-3">
-                  <p className="font-semibold">{team.name}</p>
+                  {game.phase === "LOBBY" ? (
+                    <TeamNameEditor teamId={team.id} name={team.name} color={team.color} onSave={onSaveTeam} />
+                  ) : (
+                    <p className="flex items-center gap-2 font-semibold">
+                      <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: team.color }} />
+                      {team.name}
+                    </p>
+                  )}
                   <p className="text-slate-600">
                     {team.members.length} гравців: {team.members.map((member) => member.name).join(", ") || "ще немає"}
                   </p>
@@ -483,6 +497,41 @@ function AdminDashboard({
         </section>
       </div>
     </main>
+  );
+}
+
+function TeamNameEditor({
+  teamId,
+  name,
+  color,
+  onSave,
+}: {
+  teamId: string;
+  name: string;
+  color: string;
+  onSave: (teamId: string, name: string) => void;
+}) {
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    onSave(teamId, String(form.get("name") ?? ""));
+  }
+
+  return (
+    <form onSubmit={submit} className="mb-2 grid gap-2">
+      <label className="label">
+        Назва команди
+        <div className="grid grid-cols-[1fr_44px] gap-2">
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 rounded-sm" style={{ backgroundColor: color }} />
+            <input className="input pl-8" name="name" defaultValue={name} required />
+          </div>
+          <button className="secondary-button min-h-11 px-0" type="submit" title="Зберегти назву команди">
+            <Save size={16} />
+          </button>
+        </div>
+      </label>
+    </form>
   );
 }
 
