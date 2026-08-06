@@ -2,7 +2,7 @@
 
 import { Crown, Eye, Flag, LogIn, Play, Plus, Save, Send, Trash2, Trophy, Users } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import type { AnswerOption, Game, Player, QuestionInput, Role } from "@/lib/game-store";
+import type { AnswerOption, Game, Player, QuestionInput, Role, SavedGameSummary } from "@/lib/game-store";
 import { ShareCard } from "@/components/share-card";
 
 type Snapshot = Omit<Game, "captains"> & {
@@ -15,6 +15,7 @@ type Snapshot = Omit<Game, "captains"> & {
 
 type ApiResponse = {
   game?: Snapshot;
+  games?: SavedGameSummary[];
   player?: Player;
   error?: string;
 };
@@ -63,6 +64,14 @@ export default function Home() {
   const [name, setName] = useState("");
   const [role, setRole] = useState<Role>("PLAYER");
   const [setupQuestions, setSetupQuestions] = useState<QuestionInput[]>(starterQuestions);
+  const [setupTitle, setSetupTitle] = useState("Вечірній квіз");
+  const [adminName, setAdminName] = useState("Адміністратор");
+  const [setupTeamCount, setSetupTeamCount] = useState<3 | 5>(3);
+  const [setupPlayerCount, setSetupPlayerCount] = useState(9);
+  const [setupAnswerTimeLimit, setSetupAnswerTimeLimit] = useState(60);
+  const [setupVoteTimeLimit, setSetupVoteTimeLimit] = useState(45);
+  const [setupTeamNames, setSetupTeamNames] = useState<string[]>(["Червоні", "Сині", "Зелені"]);
+  const [savedGames, setSavedGames] = useState<SavedGameSummary[]>([]);
 
   const loadGame = useCallback(async (code: string, quiet = false) => {
     const response = await fetch(`/api/game?code=${encodeURIComponent(code)}`);
@@ -72,6 +81,12 @@ export default function Home() {
       return;
     }
     if (data.game) setGame(data.game);
+  }, []);
+
+  const loadSavedGames = useCallback(async () => {
+    const response = await fetch("/api/game");
+    const data = (await response.json()) as ApiResponse;
+    if (data.games) setSavedGames(data.games);
   }, []);
 
   async function call(body: Record<string, unknown>, quiet = false) {
@@ -100,6 +115,10 @@ export default function Home() {
   }, [joinCode, loadGame, player]);
 
   useEffect(() => {
+    void Promise.resolve().then(loadSavedGames);
+  }, [loadSavedGames]);
+
+  useEffect(() => {
     if (!game?.code) return;
     const timer = setInterval(() => loadGame(game.code, true), 1500);
     return () => clearInterval(timer);
@@ -124,17 +143,17 @@ export default function Home() {
 
   function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
     call({
       action: "create",
-      title: form.get("title"),
-      adminName: form.get("adminName"),
-      teamCount: form.get("teamCount"),
-      playerCount: form.get("playerCount"),
-      questionCount: form.get("questionCount"),
-      answerTimeLimit: form.get("answerTimeLimit"),
-      voteTimeLimit: form.get("voteTimeLimit"),
+      title: setupTitle,
+      adminName,
+      teamCount: setupTeamCount,
+      playerCount: setupPlayerCount,
+      questionCount: setupQuestions.length,
+      answerTimeLimit: setupAnswerTimeLimit,
+      voteTimeLimit: setupVoteTimeLimit,
       questions: setupQuestions,
+      teamNames: setupTeamNames.slice(0, setupTeamCount),
     });
   }
 
@@ -166,12 +185,59 @@ export default function Home() {
     call({ action: "submit-vote", code: game.code, playerId: player.id, selectedAnswerId: optionId });
   }
 
-  function resetLocal() {
+  async function deleteSavedGame(code: string) {
+    const response = await fetch("/api/game", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete-game", code }),
+    });
+    const data = (await response.json()) as ApiResponse;
+    if (data.error) {
+      setError(data.error);
+      return;
+    }
+    if (data.games) setSavedGames(data.games);
+    if (game?.code === code) resetLocalOnly();
+  }
+
+  function restoreSavedGame(savedGame: SavedGameSummary) {
+    setSetupTitle(savedGame.title);
+    setSetupTeamCount(savedGame.teamCount);
+    setSetupPlayerCount(savedGame.playerCount);
+    setSetupAnswerTimeLimit(savedGame.answerTimeLimit);
+    setSetupVoteTimeLimit(savedGame.voteTimeLimit);
+    setSetupQuestions(savedGame.questions.length ? savedGame.questions : starterQuestions);
+    setSetupTeamNames(normalizeTeamNames(savedGame.teamNames, savedGame.teamCount));
+  }
+
+  function updateSetupTeamCount(value: 3 | 5) {
+    setSetupTeamCount(value);
+    setSetupTeamNames((current) => normalizeTeamNames(current, value));
+  }
+
+  function updateSetupTeamName(index: number, value: string) {
+    setSetupTeamNames((current) => current.map((name, itemIndex) => (itemIndex === index ? value : name)));
+  }
+
+  function resetLocalOnly() {
     localStorage.removeItem("bluff-quiz-session");
     setGame(null);
     setPlayer(null);
     setError("");
     setAnswerText("");
+  }
+
+  async function resetLocal() {
+    if (game && player?.role === "PLAYER") {
+      const data = await call({ action: "leave-player", code: game.code, playerId: player.id }, true);
+      if (!data) return;
+    }
+    if (game && ["ADMIN", "HOST"].includes(player?.role ?? "")) {
+      const data = await call({ action: "end-game", code: game.code }, true);
+      if (!data) return;
+    }
+    resetLocalOnly();
+    void loadSavedGames();
   }
 
   if (game && player?.role === "ADMIN") {
@@ -200,34 +266,41 @@ export default function Home() {
                 <Crown size={20} /> Створити гру
               </h2>
               <div className="grid gap-3">
-                <input name="title" className="input" placeholder="Назва гри" defaultValue="Вечірній квіз" />
-                <input name="adminName" className="input" placeholder="Ім'я адміністратора" defaultValue="Адміністратор" />
+                <input className="input" placeholder="Назва гри" value={setupTitle} onChange={(event) => setSetupTitle(event.target.value)} />
+                <input className="input" placeholder="Ім'я адміністратора" value={adminName} onChange={(event) => setAdminName(event.target.value)} />
                 <div className="grid grid-cols-2 gap-3">
                   <label className="label">
                     Команди
-                    <select name="teamCount" className="input">
+                    <select className="input" value={setupTeamCount} onChange={(event) => updateSetupTeamCount(Number(event.target.value) === 5 ? 5 : 3)}>
                       <option value="3">3</option>
                       <option value="5">5</option>
                     </select>
                   </label>
-                  <input name="questionCount" type="hidden" value={setupQuestions.length} readOnly />
                   <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
                     <p className="text-sm font-semibold text-slate-600">Питань</p>
                     <p className="text-2xl font-bold">{setupQuestions.length}</p>
                   </div>
                   <label className="label">
                     Гравців
-                    <input name="playerCount" className="input" type="number" min="1" defaultValue="9" />
+                    <input className="input" type="number" min="1" value={setupPlayerCount} onChange={(event) => setSetupPlayerCount(Number(event.target.value) || 1)} />
                   </label>
+                </div>
+                <div className="grid gap-2">
+                  {setupTeamNames.slice(0, setupTeamCount).map((teamName, index) => (
+                    <label key={index} className="label">
+                      Назва команди {index + 1}
+                      <input className="input" value={teamName} onChange={(event) => updateSetupTeamName(index, event.target.value)} />
+                    </label>
+                  ))}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <label className="label">
                     Відповідь, сек
-                    <input name="answerTimeLimit" className="input" type="number" min="10" defaultValue="60" />
+                    <input className="input" type="number" min="10" value={setupAnswerTimeLimit} onChange={(event) => setSetupAnswerTimeLimit(Number(event.target.value) || 10)} />
                   </label>
                   <label className="label">
                     Голосування, сек
-                    <input name="voteTimeLimit" className="input" type="number" min="10" defaultValue="45" />
+                    <input className="input" type="number" min="10" value={setupVoteTimeLimit} onChange={(event) => setSetupVoteTimeLimit(Number(event.target.value) || 10)} />
                   </label>
                 </div>
                 <button className="primary-button" type="submit">
@@ -235,6 +308,8 @@ export default function Home() {
                 </button>
               </div>
             </form>
+
+            <SavedGamesPanel games={savedGames} onRestore={restoreSavedGame} onDelete={deleteSavedGame} />
 
             <QuestionEditor
               title="Питання для нової гри"
@@ -397,6 +472,53 @@ function Panel({ title, icon, children }: { title: string; icon: React.ReactNode
         {icon} {title}
       </h2>
       {children}
+    </section>
+  );
+}
+
+function normalizeTeamNames(teamNames: string[], teamCount: 3 | 5) {
+  const fallback = ["Червоні", "Сині", "Зелені", "Жовті", "Білі"];
+  return fallback.slice(0, teamCount).map((name, index) => teamNames[index]?.trim() || name);
+}
+
+function SavedGamesPanel({
+  games,
+  onRestore,
+  onDelete,
+}: {
+  games: SavedGameSummary[];
+  onRestore: (game: SavedGameSummary) => void;
+  onDelete: (code: string) => void;
+}) {
+  return (
+    <section className="rounded-lg border border-slate-300 bg-white p-5 shadow-sm">
+      <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold">
+        <Save size={20} /> Збережені ігри
+      </h2>
+      {games.length ? (
+        <div className="grid gap-3">
+          {games.map((game) => (
+            <div key={game.code} className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+              <div className="min-w-0">
+                <p className="font-bold">{game.title}</p>
+                <p className="text-sm text-slate-600">
+                  Код {game.code} · {game.teamCount} команд · {game.questionCount} питань · {phaseLabels[game.phase]}
+                </p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button className="secondary-button" type="button" onClick={() => onRestore(game)}>
+                  <Save size={16} /> Відновити налаштування
+                </button>
+                <button className="ghost-button" type="button" onClick={() => onDelete(game.code)}>
+                  <Trash2 size={16} /> Видалити
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">Збережених ігор ще немає.</p>
+      )}
     </section>
   );
 }

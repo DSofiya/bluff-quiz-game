@@ -39,6 +39,20 @@ export type QuestionInput = {
   wrongAnswer: string;
 };
 
+export type SavedGameSummary = {
+  code: string;
+  title: string;
+  phase: GamePhase;
+  teamCount: 3 | 5;
+  playerCount: number;
+  questionCount: number;
+  answerTimeLimit: number;
+  voteTimeLimit: number;
+  createdAt: string;
+  teamNames: string[];
+  questions: QuestionInput[];
+};
+
 export type TeamAnswer = {
   questionId: string;
   teamId: string;
@@ -407,9 +421,11 @@ export async function createGame(input: {
   answerTimeLimit: number;
   voteTimeLimit: number;
   questions?: QuestionInput[];
+  teamNames?: string[];
 }) {
   const admin: Player = { id: id("u"), name: input.adminName || "Адміністратор", role: "ADMIN" };
   const selectedQuestions = sanitizeQuestions(input.questions, input.questionCount);
+  const teamNames = input.teamNames ?? [];
   const game: Game = {
     id: id("g"),
     code: code(),
@@ -430,9 +446,9 @@ export async function createGame(input: {
     totalPausedSeconds: 0,
     createdAt: new Date().toISOString(),
     players: [admin],
-    teams: teamPalette.slice(0, input.teamCount).map(([teamId, name, color]) => ({
+    teams: teamPalette.slice(0, input.teamCount).map(([teamId, name, color], index) => ({
       id: teamId,
-      name,
+      name: teamNames[index]?.trim() || name,
       color,
       score: 0,
       members: [],
@@ -446,6 +462,49 @@ export async function createGame(input: {
   };
   await saveGame(game);
   return { game, player: admin };
+}
+
+function savedGameSummary(game: Game): SavedGameSummary {
+  return {
+    code: game.code,
+    title: game.title,
+    phase: game.phase,
+    teamCount: game.teamCount,
+    playerCount: game.playerCount,
+    questionCount: game.questionCount,
+    answerTimeLimit: game.answerTimeLimit,
+    voteTimeLimit: game.voteTimeLimit,
+    createdAt: game.createdAt,
+    teamNames: game.teams.map((team) => team.name),
+    questions: game.questions.map((question) => ({
+      id: question.id,
+      text: question.text,
+      correctAnswer: question.correctAnswer,
+      wrongAnswer: question.wrongAnswer,
+    })),
+  };
+}
+
+export async function listSavedGames() {
+  if (!shouldUseDatabase()) {
+    return Array.from(store().games.values())
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .map(savedGameSummary);
+  }
+  const prisma = getPrisma();
+  const records = await prisma.gameState.findMany({ orderBy: { updatedAt: "desc" } });
+  return records.map((record) => savedGameSummary(record.data as unknown as Game));
+}
+
+export async function deleteSavedGame(gameCode: string) {
+  const normalizedCode = gameCode.toUpperCase();
+  if (!shouldUseDatabase()) {
+    store().games.delete(normalizedCode);
+    return null;
+  }
+  const prisma = getPrisma();
+  await prisma.gameState.delete({ where: { code: normalizedCode } });
+  return null;
 }
 
 export async function joinGame(input: { code: string; name: string; role: Role; teamId?: string }) {
@@ -519,6 +578,30 @@ export async function updateTeam(input: { code: string; teamId: string; name: st
   const name = input.name.trim();
   if (!name) throw new Error("Назва команди не може бути порожньою");
   team.name = name;
+  await saveGame(game);
+  return game;
+}
+
+export async function endGame(gameCode: string) {
+  const game = await loadGameOrThrow(gameCode);
+  game.phase = "FINISHED";
+  clearPhaseTimer(game);
+  await saveGame(game);
+  return game;
+}
+
+export async function leavePlayer(input: { code: string; playerId: string }) {
+  const game = await loadGameOrThrow(input.code);
+  const player = game.players.find((item) => item.id === input.playerId);
+  if (!player) throw new Error("Гравця не знайдено");
+  if (player.role !== "PLAYER") throw new Error("Ця дія доступна тільки гравцю");
+
+  game.players = game.players.filter((item) => item.id !== player.id);
+  for (const team of game.teams) {
+    team.members = team.members.filter((member) => member.id !== player.id);
+  }
+  game.captains = game.captains.filter((captain) => captain.userId !== player.id);
+
   await saveGame(game);
   return game;
 }

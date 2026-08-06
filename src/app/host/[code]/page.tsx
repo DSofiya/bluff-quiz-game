@@ -104,7 +104,11 @@ export default function HostPage() {
     call({ action: "update-team", code, teamId, name });
   }
 
-  function leave() {
+  async function leave() {
+    if (game) {
+      const data = await call({ action: "end-game", code });
+      if (!data) return;
+    }
     localStorage.removeItem(storageKey);
     setHost(null);
   }

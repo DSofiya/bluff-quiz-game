@@ -123,7 +123,11 @@ export default function PlayerPage() {
     call({ action: "submit-vote", code, playerId: player.id, selectedAnswerId: optionId });
   }
 
-  function leave() {
+  async function leave() {
+    if (player) {
+      const data = await call({ action: "leave-player", code, playerId: player.id });
+      if (!data) return;
+    }
     localStorage.removeItem(storageKey);
     setPlayer(null);
     setError("");

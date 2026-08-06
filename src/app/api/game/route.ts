@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   createGame,
+  deleteSavedGame,
+  endGame,
   hostAction,
   joinGame,
+  leavePlayer,
+  listSavedGames,
   publicSnapshot,
   readGame,
   setPhaseCaptain,
@@ -25,7 +29,7 @@ function fail(error: unknown) {
 export async function GET(request: NextRequest) {
   try {
     const code = request.nextUrl.searchParams.get("code");
-    if (!code) throw new Error("Потрібен код гри");
+    if (!code) return NextResponse.json({ games: await listSavedGames() });
     return ok(await readGame(code));
   } catch (error) {
     return fail(error);
@@ -46,8 +50,14 @@ export async function POST(request: NextRequest) {
         answerTimeLimit: Number(body.answerTimeLimit) || 60,
         voteTimeLimit: Number(body.voteTimeLimit) || 45,
         questions: body.questions,
+        teamNames: body.teamNames,
       });
       return ok(result.game, { player: result.player });
+    }
+
+    if (body.action === "delete-game") {
+      await deleteSavedGame(body.code);
+      return NextResponse.json({ ok: true, games: await listSavedGames() });
     }
 
     if (body.action === "join") {
@@ -78,6 +88,14 @@ export async function POST(request: NextRequest) {
 
     if (body.action === "update-team") {
       return ok(await updateTeam({ code: body.code, teamId: body.teamId, name: body.name }));
+    }
+
+    if (body.action === "end-game") {
+      return ok(await endGame(body.code));
+    }
+
+    if (body.action === "leave-player") {
+      return ok(await leavePlayer({ code: body.code, playerId: body.playerId }));
     }
 
     return ok(await hostAction(body.code, body.action));
