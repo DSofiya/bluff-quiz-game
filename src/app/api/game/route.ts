@@ -14,6 +14,7 @@ import {
   submitVote,
   updateTeam,
   updateGameQuestions,
+  normalizeTeamCount,
   type Role,
   type Game,
 } from "@/lib/game-store";
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
       const result = await createGame({
         title: body.title,
         adminName: body.adminName,
-        teamCount: Number(body.teamCount) === 5 ? 5 : 3,
+        teamCount: normalizeTeamCount(body.teamCount),
         playerCount: Number(body.playerCount) || 9,
         questionCount: Number(body.questionCount) || 10,
         answerTimeLimit: Number(body.answerTimeLimit) || 60,

@@ -2,7 +2,7 @@
 
 import { Crown, Eye, Flag, LogIn, Play, Plus, Save, Send, Trash2, Trophy, Users } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import type { AnswerOption, Game, Player, QuestionInput, Role, SavedGameSummary } from "@/lib/game-store";
+import type { AnswerOption, Game, Player, QuestionInput, Role, SavedGameSummary, TeamCount } from "@/lib/game-store";
 import { ShareCard } from "@/components/share-card";
 
 type Snapshot = Omit<Game, "captains"> & {
@@ -110,7 +110,7 @@ export default function Home() {
   const [setupQuestions, setSetupQuestions] = useState<QuestionInput[]>(starterQuestions);
   const [setupTitle, setSetupTitle] = useState("Вечірній квіз");
   const [adminName, setAdminName] = useState("Адміністратор");
-  const [setupTeamCount, setSetupTeamCount] = useState<3 | 5>(3);
+  const [setupTeamCount, setSetupTeamCount] = useState<TeamCount>(3);
   const [setupPlayerCount, setSetupPlayerCount] = useState(9);
   const [setupAnswerTimeLimit, setSetupAnswerTimeLimit] = useState(60);
   const [setupVoteTimeLimit, setSetupVoteTimeLimit] = useState(45);
@@ -254,7 +254,7 @@ export default function Home() {
     setSetupTeamNames(normalizeTeamNames(savedGame.teamNames, savedGame.teamCount));
   }
 
-  function updateSetupTeamCount(value: 3 | 5) {
+  function updateSetupTeamCount(value: TeamCount) {
     setSetupTeamCount(value);
     setSetupTeamNames((current) => normalizeTeamNames(current, value));
   }
@@ -315,7 +315,8 @@ export default function Home() {
                 <div className="grid grid-cols-2 gap-3">
                   <label className="label">
                     Команди
-                    <select className="input" value={setupTeamCount} onChange={(event) => updateSetupTeamCount(Number(event.target.value) === 5 ? 5 : 3)}>
+                    <select className="input" value={setupTeamCount} onChange={(event) => updateSetupTeamCount(normalizeTeamCount(event.target.value))}>
+                      <option value="2">2</option>
                       <option value="3">3</option>
                       <option value="5">5</option>
                     </select>
@@ -520,7 +521,12 @@ function Panel({ title, icon, children }: { title: string; icon: React.ReactNode
   );
 }
 
-function normalizeTeamNames(teamNames: string[], teamCount: 3 | 5) {
+function normalizeTeamCount(value: string): TeamCount {
+  const teamCount = Number(value);
+  return teamCount === 2 || teamCount === 3 || teamCount === 5 ? teamCount : 3;
+}
+
+function normalizeTeamNames(teamNames: string[], teamCount: TeamCount) {
   const fallback = ["Червоні", "Сині", "Зелені", "Жовті", "Білі"];
   return fallback.slice(0, teamCount).map((name, index) => teamNames[index]?.trim() || name);
 }

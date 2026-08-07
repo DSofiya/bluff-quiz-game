@@ -39,11 +39,13 @@ export type QuestionInput = {
   wrongAnswer: string;
 };
 
+export type TeamCount = 2 | 3 | 5;
+
 export type SavedGameSummary = {
   code: string;
   title: string;
   phase: GamePhase;
-  teamCount: 3 | 5;
+  teamCount: TeamCount;
   playerCount: number;
   questionCount: number;
   answerTimeLimit: number;
@@ -99,7 +101,7 @@ export type Game = {
   adminId: string;
   hostId?: string;
   phase: GamePhase;
-  teamCount: 3 | 5;
+  teamCount: TeamCount;
   playerCount: number;
   questionCount: number;
   answerTimeLimit: number;
@@ -379,6 +381,11 @@ function sanitizeQuestions(questions: QuestionInput[] | undefined, fallbackCount
   return defaultQuestions.slice(0, Math.max(1, Math.min(fallbackCount, defaultQuestions.length)));
 }
 
+export function normalizeTeamCount(value: unknown): TeamCount {
+  const teamCount = Number(value);
+  return teamCount === 2 || teamCount === 3 || teamCount === 5 ? teamCount : 3;
+}
+
 function createVoteOptions(game: Game, question: Question) {
   const existing = game.answerOptions
     .filter((option) => option.questionId === question.id)
@@ -451,7 +458,7 @@ function scoreQuestion(game: Game, question: Question) {
 export async function createGame(input: {
   title: string;
   adminName: string;
-  teamCount: 3 | 5;
+  teamCount: TeamCount;
   playerCount: number;
   questionCount: number;
   answerTimeLimit: number;
